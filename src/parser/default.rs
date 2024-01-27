@@ -26,22 +26,22 @@ impl DefaultRowParser {
 
 impl RowParser<DefaultSchema> for DefaultRowParser {
     fn parse(row: &RowSpan, context: &ParseContext) -> DefaultSchema {
-        let mut result: Vec<Option<FieldValue>> = Vec::new();
+        let mut fields: Vec<Option<FieldValue>> = Vec::new();
 
         let mut start = 0;
 
         while let Some(index) = memchr::memchr(context.delimiter, &row[start..]) {
             let span = &row[start..(start + index)];
 
-            result.push(Self::try_parse_field(span));
+            fields.push(Self::try_parse_field(span));
 
             start += index + 1;
         }
 
         if start < row.len() - 1 {
-            result.push(Self::try_parse_field(&row[start..]));
+            fields.push(Self::try_parse_field(&row[start..]));
         }
 
-        result
+        DefaultSchema::new(fields)
     }
 }

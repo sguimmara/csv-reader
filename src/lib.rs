@@ -10,19 +10,27 @@ use parser::RowParser;
 pub const SEMICOLON: u8 = 59u8;
 pub const NEWLINE: u8 = 10u8;
 
-type DefaultSchema = Vec<Option<FieldValue>>;
+pub struct DefaultSchema {
+    fields: Vec<Option<FieldValue>>,
+}
+
+impl DefaultSchema {
+    pub fn new(fields: Vec<Option<FieldValue>>) -> Self {
+        Self { fields }
+    }
+}
 
 pub struct CsvReader<Schema = DefaultSchema> {
     schema: PhantomData<Schema>,
 }
 
-impl<Schema: IntoRowParser<Schema>> Default for CsvReader<Schema> {
-    fn default() -> Self {
-        Self {
-            schema: PhantomData,
-        }
-    }
-}
+// impl<Schema: IntoRowParser<Schema>> Default for CsvReader<Schema> {
+//     fn default() -> Self {
+//         Self {
+//             schema: PhantomData,
+//         }
+//     }
+// }
 
 impl<Schema: IntoRowParser<Schema>> CsvReader<Schema> {
     pub fn read(span: &[u8]) -> Result<Vec<Schema>, Box<dyn Error>> {
@@ -88,56 +96,25 @@ macro_rules! schema {
 
 #[cfg(test)]
 mod test {
-    mod float_parser {
-        use crate::parser::{FieldParser, FloatParser};
+    mod csv_parser {
+        use std::path::Path;
+
+        use crate::{parser::FieldValue, CsvReader, DefaultSchema};
 
         #[test]
-        fn parse_valid_value_returns_ok() {
-            let result = FloatParser::<f32>::parse(b"0.32");
+        fn read_file_1_row() {
+            let result = CsvReader::<DefaultSchema>::read_file(Path::new("data/1-row.csv"));
+
             assert!(result.is_ok());
-            assert_eq!(0.32, result.unwrap());
-        }
 
-        #[test]
-        fn parse_valid_value_returns_err() {
-            let result = FloatParser::<f32>::parse(b"nope");
-            assert!(result.is_err());
-        }
-    }
+            let rows = result.unwrap();
 
-    mod default_row_parser {
-        use crate::parser::{DefaultRowParser, FieldValue, ParseContext, RowParser};
+            assert_eq!(rows.len(), 1);
 
-        #[test]
-        fn parse_returns_correct_values() {
-            let row = b"Hello;world!;30.2";
-
-            let context: ParseContext = ParseContext::default();
-
-            let result = DefaultRowParser::parse(row, &context);
-
-            assert_eq!(3, result.len());
-
-            assert_eq!(Some(FieldValue::String("Hello".to_string())), result[0]);
-            assert_eq!(Some(FieldValue::String("world!".to_string())), result[1]);
-            assert_eq!(Some(FieldValue::Float(30.2f64)), result[2]);
-        }
-
-        #[test]
-        fn parse_handle_empty_columns() {
-            let row = b"Hello;world!;30.2";
-
-            let context: ParseContext = ParseContext::default();
-
-            let result = DefaultRowParser::parse(row, &context);
-
-            assert_eq!(3, result.len());
-
-            assert_eq!(Some(FieldValue::String("Hello".to_string())), result[0]);
-            assert_eq!(Some(FieldValue::String("world!".to_string())), result[1]);
-            assert_eq!(Some(FieldValue::Float(30.2f64)), result[2]);
+            assert_eq!(rows[0].fields[0], Some(FieldValue::String("hello".into())));
         }
     }
+
 
     mod schema {
         use crate::{
@@ -168,29 +145,6 @@ mod test {
 
             assert_eq!(Some("foo".to_string()), p.name);
             assert_eq!(Some(0.2f64), p.height);
-        }
-    }
-
-    mod string_parser {
-        use crate::parser::{FieldParser, StringParser};
-
-        #[test]
-        fn parse_when_valid_string_returns_ok() {
-            let result = StringParser::parse(b"Hello, world!");
-
-            assert!(result.is_ok());
-
-            let value = result.unwrap();
-
-            assert_eq!(value, "Hello, world!");
-        }
-
-        #[test]
-        fn parse_when_invalid_utf8_string_returns_err() {
-            // https://stackoverflow.com/a/21070216/2704779
-            let result = StringParser::parse(b"AB\xfc");
-
-            assert!(result.is_err());
         }
     }
 }

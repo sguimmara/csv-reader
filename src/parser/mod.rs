@@ -46,7 +46,7 @@ pub struct StringParser {}
 impl FieldParser<String> for StringParser {
     fn parse(span: &RowSpan) -> Result<String, Box<dyn Error>> {
         match String::from_utf8(span.into()) {
-            Ok(s) => Ok(s),
+            Ok(s) => Ok(s.trim().to_string()),
             Err(e) => Err(e.into()),
         }
     }
@@ -58,9 +58,25 @@ pub struct FloatParser<T: FastFloat> {
 
 impl<T: FastFloat> FieldParser<T> for FloatParser<T> {
     fn parse(span: &RowSpan) -> Result<T, Box<dyn Error>> {
-        match fast_float::parse(span) {
+        let ss = String::from_utf8_lossy(span);
+        let s = ss.trim();
+        match fast_float::parse(&s) {
             Ok(v) => Ok(v),
             Err(e) => Err(e.into()),
+        }
+    }
+}
+
+pub struct BoolParser {}
+
+impl FieldParser<bool> for BoolParser {
+    fn parse(span: &RowSpan) -> Result<bool, Box<dyn Error>> {
+        let ss = String::from_utf8_lossy(span);
+        let s = ss.trim();
+
+        match s.parse() {
+            Ok(b) => Ok(b),
+            Err(e) => Err(e.into())
         }
     }
 }
@@ -75,6 +91,10 @@ impl IntoRowParser<DefaultSchema> for DefaultSchema {
 
 pub trait IntoFieldParser<T> {
     type Parser: FieldParser<T>;
+}
+
+impl IntoFieldParser<bool> for bool {
+    type Parser = BoolParser;
 }
 
 impl IntoFieldParser<f32> for f32 {
@@ -129,5 +149,106 @@ impl<'a> Iterator for RowSpanIterator<'a> {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    mod bool_parser {
+        use crate::parser::{FieldParser, BoolParser};
+
+        #[test]
+        fn parse_true_value_returns_ok() {
+            let result = BoolParser::parse(b" true  ");
+            assert!(result.is_ok());
+            assert_eq!(true, result.unwrap());
+        }
+
+        #[test]
+        fn parse_false_value_returns_ok() {
+            let result = BoolParser::parse(b"  false ");
+            assert!(result.is_ok());
+            assert_eq!(false, result.unwrap());
+        }
+
+        #[test]
+        fn parse_invalid_value_returns_err() {
+            let result = BoolParser::parse(b"nope");
+            assert!(result.is_err());
+        }
+    }
+
+    mod float_parser {
+        use crate::parser::{FieldParser, FloatParser};
+
+        #[test]
+        fn parse_valid_value_returns_ok() {
+            let result = FloatParser::<f32>::parse(b"0.32");
+            assert!(result.is_ok());
+            assert_eq!(0.32, result.unwrap());
+        }
+
+        #[test]
+        fn parse_invalid_value_returns_err() {
+            let result = FloatParser::<f32>::parse(b"nope");
+            assert!(result.is_err());
+        }
+    }
+
+    mod default_row_parser {
+        use crate::parser::{DefaultRowParser, FieldValue, ParseContext, RowParser};
+
+        #[test]
+        fn parse_returns_correct_values() {
+            let row = b" Hello;  world! ; 30.2 ";
+
+            let context: ParseContext = ParseContext::default();
+
+            let result = DefaultRowParser::parse(row, &context).fields;
+
+            assert_eq!(3, result.len());
+
+            assert_eq!(Some(FieldValue::String("Hello".to_string())), result[0]);
+            assert_eq!(Some(FieldValue::String("world!".to_string())), result[1]);
+            assert_eq!(Some(FieldValue::Float(30.2f64)), result[2]);
+        }
+
+        #[test]
+        fn parse_handle_empty_columns() {
+            let row = b"Hello;world!;30.2";
+
+            let context: ParseContext = ParseContext::default();
+
+            let result = DefaultRowParser::parse(row, &context).fields;
+
+            assert_eq!(3, result.len());
+
+            assert_eq!(Some(FieldValue::String("Hello".to_string())), result[0]);
+            assert_eq!(Some(FieldValue::String("world!".to_string())), result[1]);
+            assert_eq!(Some(FieldValue::Float(30.2f64)), result[2]);
+        }
+    }
+
+    mod string_parser {
+        use crate::parser::{FieldParser, StringParser};
+
+        #[test]
+        fn parse_when_valid_string_returns_ok() {
+            let result = StringParser::parse(b"Hello, world!");
+
+            assert!(result.is_ok());
+
+            let value = result.unwrap();
+
+            assert_eq!(value, "Hello, world!");
+        }
+
+        #[test]
+        fn parse_when_invalid_utf8_string_returns_err() {
+            // https://stackoverflow.com/a/21070216/2704779
+            let result = StringParser::parse(b"AB\xfc");
+
+            assert!(result.is_err());
+        }
     }
 }
