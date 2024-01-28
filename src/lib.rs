@@ -14,7 +14,11 @@ pub struct DefaultSchema {
     fields: Vec<Option<FieldValue>>,
 }
 
-impl DefaultSchema {
+impl<'a> DefaultSchema {
+    pub fn fields(&'a self) -> &'a Vec<Option<FieldValue>> {
+        &self.fields
+    }
+
     pub fn new(fields: Vec<Option<FieldValue>>) -> Self {
         Self { fields }
     }
@@ -61,6 +65,10 @@ impl<'a> Iterator for RowIterator<'a> {
 }
 
 impl<Schema: IntoRowParser<Schema>> CsvReader<Schema> {
+    pub fn with_default_schema() -> CsvReader<DefaultSchema> {
+        CsvReader::<DefaultSchema>::default()
+    }
+
     pub fn read(&self, span: &[u8]) -> Result<Vec<Schema>, Box<dyn Error>> {
         let mut result: Vec<Schema> = Vec::new();
 
