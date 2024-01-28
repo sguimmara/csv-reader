@@ -38,7 +38,7 @@ struct RowIterator<'a> {
 }
 
 impl<'a> RowIterator<'a> {
-    pub fn new(data: &'a[u8]) -> Self {
+    pub fn new(data: &'a [u8]) -> Self {
         Self { data, offset: 0 }
     }
 }
@@ -48,7 +48,7 @@ impl<'a> Iterator for RowIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.offset >= self.data.len() {
-            return None
+            return None;
         }
         if let Some(index) = memchr::memchr(NEWLINE, &self.data[self.offset..]) {
             let result = Some(&self.data[self.offset..self.offset + index]);
@@ -56,7 +56,7 @@ impl<'a> Iterator for RowIterator<'a> {
             return result;
         }
 
-        return None
+        None
     }
 }
 
@@ -70,10 +70,7 @@ impl<Schema: IntoRowParser<Schema>> CsvReader<Schema> {
 
         // Skip header
         for line in iterator.skip(1) {
-            let row = <Schema as IntoRowParser<Schema>>::Parser::parse(
-                line,
-                &context,
-            );
+            let row = <Schema as IntoRowParser<Schema>>::Parser::parse(line, &context);
             result.push(row);
         }
 
@@ -132,7 +129,7 @@ mod test {
             let data = b"header1,header-2\nvalue-1,value2\n";
             let iterator = RowIterator::new(data);
 
-            let lines : Vec<_> = iterator.collect();
+            let lines: Vec<_> = iterator.collect();
 
             assert_eq!(lines[0], b"header1,header-2");
             assert_eq!(lines[1], b"value-1,value2");
@@ -146,7 +143,8 @@ mod test {
 
         #[test]
         fn read_file_1_row() {
-            let result = CsvReader::<DefaultSchema>::default().read_file(Path::new("data/1-row.csv"));
+            let result =
+                CsvReader::<DefaultSchema>::default().read_file(Path::new("data/1-row.csv"));
 
             assert!(result.is_ok());
 
@@ -157,7 +155,6 @@ mod test {
             assert_eq!(rows[0].fields[0], Some(FieldValue::String("hello".into())));
         }
     }
-
 
     mod schema {
         use crate::{

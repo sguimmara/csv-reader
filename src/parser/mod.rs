@@ -18,9 +18,7 @@ pub struct ParseContext {
 
 impl Default for ParseContext {
     fn default() -> Self {
-        Self {
-            delimiter: COMMA,
-        }
+        Self { delimiter: COMMA }
     }
 }
 
@@ -46,7 +44,7 @@ pub struct StringParser {}
 impl FieldParser<String> for StringParser {
     fn parse(span: &RowSpan) -> Result<String, Box<dyn Error>> {
         match String::from_utf8(span.into()) {
-            Ok(s) => Ok(s.into()),
+            Ok(s) => Ok(s),
             Err(e) => Err(e.into()),
         }
     }
@@ -60,7 +58,7 @@ impl<T: FastFloat> FieldParser<T> for FloatParser<T> {
     fn parse(span: &RowSpan) -> Result<T, Box<dyn Error>> {
         let ss = String::from_utf8_lossy(span);
         let s = ss.trim();
-        match fast_float::parse(&s) {
+        match fast_float::parse(s) {
             Ok(v) => Ok(v),
             Err(e) => Err(e.into()),
         }
@@ -75,7 +73,7 @@ impl FieldParser<bool> for BoolParser {
 
         match ss.parse() {
             Ok(b) => Ok(b),
-            Err(e) => Err(e.into())
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -154,20 +152,20 @@ impl<'a> Iterator for RowSpanIterator<'a> {
 #[cfg(test)]
 mod test {
     mod bool_parser {
-        use crate::parser::{FieldParser, BoolParser};
+        use crate::parser::{BoolParser, FieldParser};
 
         #[test]
         fn parse_true_value_returns_ok() {
             let result = BoolParser::parse(b"true");
             assert!(result.is_ok());
-            assert_eq!(true, result.unwrap());
+            assert!(result.unwrap());
         }
 
         #[test]
         fn parse_false_value_returns_ok() {
             let result = BoolParser::parse(b"false");
             assert!(result.is_ok());
-            assert_eq!(false, result.unwrap());
+            assert!(!result.unwrap());
         }
 
         #[test]
