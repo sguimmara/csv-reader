@@ -1,14 +1,14 @@
 use std::{error::Error, fs::File, marker::PhantomData, path::Path};
 
 use memmap::MmapOptions;
-use parser::{FieldValue, IntoRowParser, ParseContext};
+use parser::{FieldValue, IntoRowParser, ParseContext, RowSpan};
 
 pub mod parser;
 
 use parser::RowParser;
 
-pub const SEMICOLON: u8 = 59u8;
-pub const NEWLINE: u8 = 10u8;
+pub const NEWLINE: u8 = 0x0A;
+pub const COMMA: u8 = 0x2C;
 
 pub struct DefaultSchema {
     fields: Vec<Option<FieldValue>>,
@@ -24,40 +24,68 @@ pub struct CsvReader<Schema = DefaultSchema> {
     schema: PhantomData<Schema>,
 }
 
-// impl<Schema: IntoRowParser<Schema>> Default for CsvReader<Schema> {
-//     fn default() -> Self {
-//         Self {
-//             schema: PhantomData,
-//         }
-//     }
-// }
+impl<Schema: IntoRowParser<Schema>> Default for CsvReader<Schema> {
+    fn default() -> Self {
+        Self {
+            schema: PhantomData,
+        }
+    }
+}
+
+struct RowIterator<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> RowIterator<'a> {
+    pub fn new(data: &'a[u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+}
+
+impl<'a> Iterator for RowIterator<'a> {
+    type Item = &'a RowSpan;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset >= self.data.len() {
+            return None
+        }
+        if let Some(index) = memchr::memchr(NEWLINE, &self.data[self.offset..]) {
+            let result = Some(&self.data[self.offset..self.offset + index]);
+            self.offset += index + 1;
+            return result;
+        }
+
+        return None
+    }
+}
 
 impl<Schema: IntoRowParser<Schema>> CsvReader<Schema> {
-    pub fn read(span: &[u8]) -> Result<Vec<Schema>, Box<dyn Error>> {
+    pub fn read(&self, span: &[u8]) -> Result<Vec<Schema>, Box<dyn Error>> {
         let mut result: Vec<Schema> = Vec::new();
 
         let context = ParseContext::default();
 
-        let mut offset = 0;
+        let iterator = RowIterator::new(span);
 
-        while let Some(index) = memchr::memchr(NEWLINE, &span[offset..]) {
+        // Skip header
+        for line in iterator.skip(1) {
             let row = <Schema as IntoRowParser<Schema>>::Parser::parse(
-                &span[offset..offset + index],
+                line,
                 &context,
             );
             result.push(row);
-            offset += index + 1;
         }
 
         Ok(result)
     }
 
-    pub fn read_file(path: &Path) -> Result<Vec<Schema>, Box<dyn Error>> {
+    pub fn read_file(&self, path: &Path) -> Result<Vec<Schema>, Box<dyn Error>> {
         let file = File::open(path)?;
 
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-        Self::read(&mmap)
+        self.read(&mmap)
     }
 }
 
@@ -96,6 +124,21 @@ macro_rules! schema {
 
 #[cfg(test)]
 mod test {
+    mod row_iterator {
+        use crate::RowIterator;
+
+        #[test]
+        fn feature() {
+            let data = b"header1,header-2\nvalue-1,value2\n";
+            let iterator = RowIterator::new(data);
+
+            let lines : Vec<_> = iterator.collect();
+
+            assert_eq!(lines[0], b"header1,header-2");
+            assert_eq!(lines[1], b"value-1,value2");
+        }
+    }
+
     mod csv_parser {
         use std::path::Path;
 
@@ -103,7 +146,7 @@ mod test {
 
         #[test]
         fn read_file_1_row() {
-            let result = CsvReader::<DefaultSchema>::read_file(Path::new("data/1-row.csv"));
+            let result = CsvReader::<DefaultSchema>::default().read_file(Path::new("data/1-row.csv"));
 
             assert!(result.is_ok());
 
@@ -126,9 +169,9 @@ mod test {
 
         #[test]
         fn parse_file() {
-            let csv = b"foo1;0.32;\nfoo2;1\n";
+            let csv = b"header1,header2\nfoo1,0.32\nfoo2,1\n";
 
-            let rows = CsvReader::<MySchema>::read(csv).unwrap();
+            let rows = CsvReader::<MySchema>::default().read(csv).unwrap();
             assert_eq!(rows.len(), 2);
 
             assert_eq!(rows[0].name, Some("foo1".to_string()));
@@ -141,7 +184,7 @@ mod test {
         #[test]
         fn schema() {
             let context = ParseContext::default();
-            let p = MySchemaParser::parse(b"foo;0.2", &context);
+            let p = MySchemaParser::parse(b"foo,0.2", &context);
 
             assert_eq!(Some("foo".to_string()), p.name);
             assert_eq!(Some(0.2f64), p.height);

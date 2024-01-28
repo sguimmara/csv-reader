@@ -5,7 +5,7 @@ use std::{error::Error, marker::PhantomData};
 pub use default::{DefaultRowParser, FieldValue};
 use fast_float::FastFloat;
 
-use crate::{DefaultSchema, SEMICOLON};
+use crate::{DefaultSchema, COMMA};
 
 pub type RowSpan = [u8];
 pub type FieldSpan = [u8];
@@ -19,7 +19,7 @@ pub struct ParseContext {
 impl Default for ParseContext {
     fn default() -> Self {
         Self {
-            delimiter: SEMICOLON,
+            delimiter: COMMA,
         }
     }
 }
@@ -46,7 +46,7 @@ pub struct StringParser {}
 impl FieldParser<String> for StringParser {
     fn parse(span: &RowSpan) -> Result<String, Box<dyn Error>> {
         match String::from_utf8(span.into()) {
-            Ok(s) => Ok(s.trim().to_string()),
+            Ok(s) => Ok(s.into()),
             Err(e) => Err(e.into()),
         }
     }
@@ -72,9 +72,8 @@ pub struct BoolParser {}
 impl FieldParser<bool> for BoolParser {
     fn parse(span: &RowSpan) -> Result<bool, Box<dyn Error>> {
         let ss = String::from_utf8_lossy(span);
-        let s = ss.trim();
 
-        match s.parse() {
+        match ss.parse() {
             Ok(b) => Ok(b),
             Err(e) => Err(e.into())
         }
@@ -159,14 +158,14 @@ mod test {
 
         #[test]
         fn parse_true_value_returns_ok() {
-            let result = BoolParser::parse(b" true  ");
+            let result = BoolParser::parse(b"true");
             assert!(result.is_ok());
             assert_eq!(true, result.unwrap());
         }
 
         #[test]
         fn parse_false_value_returns_ok() {
-            let result = BoolParser::parse(b"  false ");
+            let result = BoolParser::parse(b"false");
             assert!(result.is_ok());
             assert_eq!(false, result.unwrap());
         }
@@ -200,7 +199,7 @@ mod test {
 
         #[test]
         fn parse_returns_correct_values() {
-            let row = b" Hello;  world! ; 30.2 ";
+            let row = b" Hello,  world! ,30.2 ";
 
             let context: ParseContext = ParseContext::default();
 
@@ -208,14 +207,14 @@ mod test {
 
             assert_eq!(3, result.len());
 
-            assert_eq!(Some(FieldValue::String("Hello".to_string())), result[0]);
-            assert_eq!(Some(FieldValue::String("world!".to_string())), result[1]);
+            assert_eq!(Some(FieldValue::String(" Hello".to_string())), result[0]);
+            assert_eq!(Some(FieldValue::String("  world! ".to_string())), result[1]);
             assert_eq!(Some(FieldValue::Float(30.2f64)), result[2]);
         }
 
         #[test]
         fn parse_handle_empty_columns() {
-            let row = b"Hello;world!;30.2";
+            let row = b"Hello,world!,30.2";
 
             let context: ParseContext = ParseContext::default();
 
@@ -234,13 +233,13 @@ mod test {
 
         #[test]
         fn parse_when_valid_string_returns_ok() {
-            let result = StringParser::parse(b"Hello, world!");
+            let result = StringParser::parse(b"\"Hello, world!\"");
 
             assert!(result.is_ok());
 
             let value = result.unwrap();
 
-            assert_eq!(value, "Hello, world!");
+            assert_eq!(value, "\"Hello, world!\"");
         }
 
         #[test]
